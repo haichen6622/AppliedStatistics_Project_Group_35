@@ -1,0 +1,217 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Dec  5 22:59:15 2020
+
+@author: helenleft
+"""
+
+from IPython.core.display import Latex
+
+def lprint(*args,**kwargs):
+    """Pretty print arguments as LaTeX using IPython display system 
+    
+    Parameters
+    ----------
+    args : tuple 
+        What to print (in LaTeX math mode)
+    kwargs : dict 
+        optional keywords to pass to `display` 
+    """
+    display(Latex('$$'+' '.join(args)+'$$'),**kwargs)
+    
+
+# Import SymPy: 
+from sympy import * 
+    
+# Define variables:
+g,T,L = symbols("g, T, L")
+dg,dT,dL = symbols("sigma_g, sigma_T, sigma_L")
+
+# Perimeter:
+# Define relation, and print:
+g = L*((2*pi/T)**2)
+lprint(latex(Eq(symbols('g'),g)))
+
+# Calculate uncertainty and print:
+dg = sqrt((g.diff(L) * dL)**2 + (g.diff(T) * dT)**2)
+lprint(latex(Eq(symbols('sigma_g'), dg)))
+
+
+
+#######################################################
+###### Read in T, and get T and its uncertainty #######
+#######################################################
+
+import os
+import glob
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.linear_model import LinearRegression
+from scipy.stats import chisquare
+
+# Change working directory to where you store the data
+os.chdir("/Users/helenleft/Desktop/Applied_statistics/Project_1_g/Pendulum/")
+filenames = sorted(glob.glob("*.dat"))
+
+# Set an array to save each T and its uncertainty
+Arr_T_sd = np.zeros((4,4))  # slope(T), sd, chi2, p
+
+for i in range(0, np.size(filenames),1):
+
+    t = np.loadtxt(filenames[i], unpack = True)
+    t = np.transpose(t)
+  
+    x = t[:,0]
+    y = t[:,1]
+
+    x_re = t[:,0].reshape((-1,1))
+    y_re = t[:,1].reshape((-1,1))
+    
+    
+    # Fitting the linear model with intercept of 0
+    model = LinearRegression(fit_intercept = True)
+
+    T_lm = model.fit(x_re,y_re)
+
+    intercept = T_lm.intercept_
+    slope = T_lm.coef_
+
+    T_pred = model.predict(x_re)
+
+    T_diff = T_pred - y_re
+    T_diff_re = np.reshape(T_diff,(1,25))
+    T_diff_re = T_diff_re.squeeze()
+
+    sd = np.std(T_diff_re)
+    
+    # chi2 test goodness of fit
+    T_pred_re = T_pred.reshape((1,25))
+    T_pred_re = np.squeeze(T_pred_re)
+    T_pred_re = [round(T_pred_re[j],4) for j in range(0,25)]
+    T_pred_re = np.array(T_pred_re)
+    
+    chi2, p = chisquare(y,T_pred_re,ddof = 1) 
+    
+    
+    
+    Arr_T_sd[i,0] = slope  # T
+    Arr_T_sd[i,1] = sd    # Uncertainty
+    Arr_T_sd[i,2] = chi2 # Chi2 value
+    Arr_T_sd[i,3] = p   # p-value
+    
+
+
+
+### Plot for the last T ###
+
+
+fig, main_ax = plt.subplots()
+
+main_ax.plot(x, T_pred_re)
+main_ax.scatter(x, T_pred_re)
+main_ax.scatter(x, T_diff_re)
+
+main_ax.set_xlabel('Measurement number')
+main_ax.set_ylabel('Time elapsed [s]')
+main_ax.text(1, 60.0, "Period = "+ str( Arr_T_sd[i,0].round(4)) +"+- " + str(sd.round(4)))
+main_ax.hlines(y=sd,xmin = 0.0, xmax = 25.0, colors = "grey",linestyles='dashed')
+main_ax.hlines(y=-sd,xmin = 0.0, xmax = 25.0, colors = "grey",linestyles='dashed')
+#main_ax.set_title('Gaussian colored noise')
+
+
+# this is an inset axes over the main axes
+right_inset_ax = fig.add_axes([0.55, 0.2, 0.3, 0.3])
+right_inset_ax.hist(T_diff_re, 20, density= True)
+
+
+
+## Add best fit line
+bins = np.arange(-0.5,0.5,0.01)
+hist_y = ((1 / (np.sqrt(2 * np.pi) * sd)) *
+     np.exp(-0.5 * (1 / sd * (bins - np.mean(T_diff_re)))**2))
+right_inset_ax.plot(bins,hist_y,"--")
+
+
+right_inset_ax.set_title('Distribution of time residuals',fontsize=10) #, xticks=[], yticks=[]
+plt.show()
+    
+
+##------------------------------------------------
+
+## Chi2 test for all T ##
+
+chisquare(Arr_T_sd[:,0])
+
+# Get final T and uncertainty
+T_fl  = np.mean(Arr_T_sd[:,0])
+sigma_T_fl = 0.25 * np.sqrt((Arr_T_sd[0,1]**2 + Arr_T_sd[1,1]**2 + Arr_T_sd[2,1]**2 + Arr_T_sd[3,1]**2 ))
+
+
+
+######################################################
+###### Read in L and get L and its uncertainty #######
+######################################################
+from numpy import genfromtxt
+
+data_L = genfromtxt('Pendulum length-1.csv', delimiter=',', skip_header = 1)
+
+# L1 + L2 + L3 (before)
+L_13_bf = np.mean(data_L[:,1]) * 0.01  # * 0.01  convert the unit to meter
+L_13_bf_sd = np.std(data_L[:,1]) * 0.01
+chisquare(data_L[:,1],ddof = 0)
+
+
+# L1 + L2 + L3 (after)
+L_13_aft = np.mean(data_L[:,4]) * 0.01
+L_13_aft_sd = np.std(data_L[:,4]) * 0.01
+
+chisquare(data_L[:,4],ddof = 0)
+
+# L4
+L4 = np.mean(data_L[:,2]) * 0.01
+L4_sd = np.std(data_L[:,2]) * 0.01
+
+chisquare(data_L[:,2],ddof = 0)
+
+
+# Calculate L (before experiment)
+L_bf = L_13_bf + 0.5 * L4
+sigma_L_bf = np.sqrt(L_13_bf_sd**2 + (0.5**2)*(L4_sd**2))
+
+
+# Calculate L (after experiment)
+L_aft = L_13_aft + 0.5 * L4
+sigma_L_aft = np.sqrt(L_13_aft_sd**2 + (0.5**2)*(L4_sd**2))
+
+
+
+######################################################
+###### RCalculate g and get its uncertainty #######
+######################################################
+
+
+### Based on L before experiment 
+# Calculate g 
+g_bf = L_bf * ((2*np.pi/T_fl)**2) 
+
+sigma_g_bf= np.sqrt(64*(np.pi**4)*(L_bf**2)*(sigma_T_fl**2)/(T_fl**6) + 16*(np.pi**4)*(sigma_L_bf**2)/(T_fl**4))
+
+
+### Based on L after experiment 
+g_aft = L_aft * ((2*np.pi/T_fl)**2) 
+
+sigma_g_aft = np.sqrt(64*(np.pi**4)*(L_aft**2)*(sigma_T_fl**2)/(T_fl**6) + 16*(np.pi**4)*(sigma_L_aft**2)/(T_fl**4))
+
+
+
+### Final g
+g = np.mean([g_bf,g_aft])
+g
+
+g_sigma = 0.5 * np.sqrt((sigma_g_bf**2 + sigma_g_aft**2))
+g_sigma
+
+
+
+
